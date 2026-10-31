@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Прогноз спроса и выручки</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Тёмная витрина в стиле исходного дашборда: сверху данные, ниже итоги, графики, детали */
+:root{--bg:#081227;--card:#0D1B38;--card2:#0F2044;--ink:#DCE8FF;--mut:#7F95BE;--line:#1C2E55;--cy:#30E3F0;--acc:#2F86FF;--or:#F2B84B;--red:#FF5C7A;--hist:#5A74A3;--field:#0A1733;--ok:#3DDC97;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:radial-gradient(ellipse at top,#10224A,var(--bg) 60%) fixed;background-color:var(--bg);color:var(--ink);
+  font-family:"Exo 2",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding-block:40px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:clamp(26px,4vw,40px);margin:0 0 10px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;text-wrap:balance}
+h1 i{font-style:normal;color:var(--cy);text-shadow:0 0 18px rgba(48,227,240,.45)}
+.lead{font-size:17px;color:#B9C9E8;max-width:820px;margin:0 0 8px}
+.meta{font-size:13px;color:var(--mut);margin:0 0 28px}
+.h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--cy);font-weight:700;margin:0 0 4px}
+.d{font-size:13.5px;color:var(--mut);margin:0 0 14px}
+.card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:16px;padding:20px 22px;min-width:0}
+@media(max-width:560px){.card{padding:16px 14px}}
+section{margin-bottom:18px}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+@media(max-width:960px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3,.g2{grid-template-columns:minmax(0,1fr)}}
+/* pipeline */
+.pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;position:relative;margin-top:6px}
+@media(max-width:960px){.pipe{grid-template-columns:1fr}}
+.st{position:relative;padding:16px;border:1px solid var(--line);background:rgba(10,23,51,.6);border-radius:14px;margin:0 8px;cursor:default;transition:.25s}
+.st:hover,.st.on{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy),0 0 22px rgba(48,227,240,.18)}
+.st .n{font-size:12px;color:var(--cy);letter-spacing:.12em;font-weight:700}
+.st b{display:block;font-size:16px;margin:4px 0 6px}
+.st p{margin:0;font-size:13px;color:var(--mut)}
+.st:not(:last-child)::after{content:"";position:absolute;right:-13px;top:50%;width:10px;height:10px;border-top:2px solid var(--cy);border-right:2px solid var(--cy);transform:translateY(-50%) rotate(45deg);opacity:.7}
+@media(max-width:960px){.st{margin:0 0 14px}.st:not(:last-child)::after{right:50%;top:auto;bottom:-12px;transform:translateX(50%) rotate(135deg)}}
+.lock{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--or);margin-top:10px}
+/* rings */
+.ring{text-align:center}
+.ring svg{filter:drop-shadow(0 0 6px rgba(48,227,240,.45));max-width:100%}
+.ring b{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-top:6px;font-weight:500}
+.ring small{display:block;color:var(--mut);font-size:12.5px}
+/* scen cards */
+.big{font-size:36px;font-weight:700;line-height:1.1;margin:8px 0 4px}
+.big span{font-size:15px;color:var(--mut);font-weight:500;margin-left:4px}
+.kv{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding:8px 0 0;margin-top:8px;font-size:14px}
+.kv .l{color:var(--mut);font-size:11px;letter-spacing:.1em;text-transform:uppercase;align-self:center}
+.par{font-size:12.5px;color:var(--mut);margin-top:10px}
+/* controls */
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{all:unset;cursor:pointer;padding:6px 14px;border-radius:999px;font-size:13px;color:var(--mut)}
+.seg button.on{background:rgba(48,227,240,.12);color:var(--cy);box-shadow:inset 0 0 0 1px var(--cy)}
+.seg button:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+select,input[type=text],input[type=number],input[type=search]{background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font:inherit;font-size:13px;max-width:100%}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12.5px;white-space:nowrap;opacity:0;transition:opacity .12s;z-index:5}
+.tip .r{display:flex;justify-content:space-between;gap:14px}
+.leg{display:flex;flex-wrap:wrap;gap:16px;font-size:12.5px;color:var(--mut);margin-top:8px}
+.leg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+/* tables */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px 6px;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+th{color:var(--mut);font-weight:500;font-size:12px;letter-spacing:.05em;border-bottom:1px solid var(--line);vertical-align:bottom}
+tr+tr td{border-top:1px solid var(--line)}
+tr.tot td{color:var(--cy);font-weight:700}
+tr.best td{color:var(--cy)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;background:var(--cy);box-shadow:0 0 8px var(--cy)}
+.dot.o{background:var(--or);box-shadow:0 0 8px var(--or)}.dot.b{background:var(--red);box-shadow:0 0 8px var(--red)}
+.spark{display:inline-block;vertical-align:middle}
+.bar{height:6px;border-radius:4px;background:var(--line);overflow:hidden;min-width:70px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--cy))}
+footer{margin-top:26px;font-size:12.5px;color:var(--mut);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+/* data loading */
+.steps{display:grid;gap:18px}
+.stp{border:1px solid var(--line);border-radius:14px;padding:16px;background:rgba(10,23,51,.5);min-width:0}
+.stp>header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;margin-bottom:12px}
+.stp .num{font-size:12px;color:var(--cy);letter-spacing:.12em;font-weight:700}
+.stp .t{font-size:16px;font-weight:600}
+.stp .s{font-size:13px;color:var(--mut)}
+.drop{display:flex;flex-wrap:wrap;align-items:center;gap:14px;border:1.5px dashed #2A4275;border-radius:14px;padding:18px;transition:.2s}
+.drop.over{border-color:var(--cy);background:rgba(48,227,240,.06)}
+.drop .what{flex:1 1 260px;min-width:0}
+.drop .what b{display:block;font-size:15px}
+.drop .what span{font-size:13px;color:var(--mut)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;font-size:13.5px;border:1px solid var(--line);color:var(--ink);background:var(--field);transition:.15s}
+.btn:hover{border-color:var(--cy)}
+.btn.pri{background:rgba(48,227,240,.14);border-color:var(--cy);color:var(--cy);font-weight:600}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.file{font-size:13px;color:var(--mut);margin-top:10px}
+.file b{color:var(--ink);font-weight:500}
+.opts{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:13px;color:var(--mut);margin-bottom:12px}
+.opts label{display:inline-flex;align-items:center;gap:6px}
+.opts input[type=number]{width:72px}
+.prev{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.prev table{font-size:12.5px}
+.prev th,.prev td{padding:5px 8px;text-align:left;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.prev th{position:sticky;top:0;background:var(--card);z-index:1}
+.prev td.rn,.prev th.rn{color:var(--mut);text-align:right;width:1%}
+.prev tr.hdr td{background:rgba(48,227,240,.1);color:var(--cy);font-weight:600}
+.prev tr.pre td{color:#56688F}
+.prev tr.data{cursor:pointer}
+.prev tbody tr:hover td{background:rgba(47,134,255,.08)}
+.prev th .chip{display:inline-block;margin-left:6px;font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(48,227,240,.14);color:var(--cy);letter-spacing:.03em}
+.map{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+@media(max-width:860px){.map{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.map{grid-template-columns:minmax(0,1fr)}}
+.map label{display:grid;gap:4px;font-size:13px;min-width:0}
+.map label b{font-weight:600}
+.map label b em{font-style:normal;color:var(--red);margin-left:2px}
+.map label span{font-size:12px;color:var(--mut)}
+.map select{width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip2{display:inline-flex;gap:6px;align-items:baseline;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;background:rgba(10,23,51,.6)}
+.chip2 b{font-weight:600}
+.chip2.warn{border-color:rgba(242,184,75,.5);color:var(--or)}
+.chip2.okc{border-color:rgba(61,220,151,.45);color:var(--ok)}
+.msg{font-size:13.5px;border-radius:10px;padding:10px 12px;margin:0 0 12px;border:1px solid}
+.msg.err{color:#FFB3C1;border-color:rgba(255,92,122,.5);background:rgba(255,92,122,.08)}
+.msg.warn{color:#F7D58F;border-color:rgba(242,184,75,.45);background:rgba(242,184,75,.07)}
+.msg.ok{color:#9BEFC9;border-color:rgba(61,220,151,.4);background:rgba(61,220,151,.07)}
+.sku td input[type=text]{width:100%;min-width:160px;padding:5px 8px}
+.sku td:first-child{width:28px}
+.sku td.nm{text-align:left;white-space:normal;min-width:160px}
+.sku tr.off td{opacity:.45}
+.tag{font-size:11px;color:var(--or);margin-left:6px;white-space:nowrap}
+.bar2{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:14px}
+.stale{font-size:13px;color:var(--or)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--card2);border:1px solid var(--cy);color:var(--ink);padding:10px 16px;border-radius:12px;font-size:13.5px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;max-width:calc(100% - 32px)}
+#toast.on{opacity:1}
+.na{color:var(--mut)}
+
+/* compact layout */
+.wrap{padding-block:20px 32px}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px 16px;margin-bottom:12px}
+.top h1{font-size:clamp(20px,2.6vw,28px);margin:0 0 2px}
+.top .meta{margin:0;font-size:12.5px}
+.hctl{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{padding:5px 11px;font-size:12.5px}
+section{margin-bottom:12px}
+.grid{gap:12px}
+.card{padding:14px 16px;border-radius:12px}
+.h2{font-size:11.5px;margin:0}
+.d{font-size:12.5px;margin:2px 0 8px}
+.ch{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;margin-bottom:6px}
+.ch .leg{margin:0}
+.leg{gap:12px;font-size:12px;margin-top:6px}
+.dbar{padding:10px 14px}
+.dbar .drop{border:0;padding:0;gap:10px}
+.dbar .drop.over{outline:1.5px dashed var(--cy);outline-offset:6px}
+.dbar .what{flex:1 1 220px;font-size:13px}
+.dbar .what b{display:inline;font-size:13px;color:var(--cy);letter-spacing:.1em;text-transform:uppercase;margin-right:6px}
+.dbar .file{margin:0;display:inline}
+.dbar .file b{text-transform:none;letter-spacing:0;color:var(--ink);font-weight:500;margin:0}
+.btns{align-items:center}
+.btn{padding:6px 12px;font-size:13px}
+.btn.sm{padding:4px 10px;font-size:12.5px}
+.setup{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:10px}
+@media(max-width:960px){.setup{grid-template-columns:minmax(0,1fr)}}
+.stp{padding:12px}
+.stp>header{margin-bottom:8px}
+.stp .t{font-size:14px}
+.stp .s,#skuCnt{font-size:12px;color:var(--mut)}
+.prev{max-height:190px}
+.map{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.map label span{display:none}
+.scroll{max-height:280px;overflow:auto}
+.chips{gap:6px;margin-bottom:8px}
+.chip2{padding:3px 10px;font-size:12px}
+.msg{padding:7px 10px;font-size:12.5px;margin-bottom:8px}
+.kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:620px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.kpi .l{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .v{font-size:22px;font-weight:700;line-height:1.2;margin:2px 0}
+.kpi .v span{font-size:12px;color:var(--mut);font-weight:500;margin-left:3px}
+.kpi .s{font-size:11.5px;color:var(--mut)}
+.kpi .mb{height:4px;border-radius:3px;background:var(--line);margin-top:6px;overflow:hidden}
+.kpi .mb i{display:block;height:100%}
+.qt{font-size:12.5px;margin-top:6px}
+.qt td,.qt th{padding:4px 4px}
+table{font-size:13px}
+th,td{padding:6px 6px}
+#skt tr.tot td{position:sticky;top:0;background:var(--card)}
+footer{margin-top:14px;font-size:11.5px}
+.hz{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut)}
+.hz input{width:62px;padding:5px 8px}.hz select{padding:5px 8px}
+.selbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;font-size:12.5px;color:var(--mut);min-height:28px;margin-bottom:4px}
+.selbar b{color:var(--ink);font-weight:600}
+#main svg{user-select:none;-webkit-user-select:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <h1>Прогноз <i>спроса и выручки</i></h1>
+    <p class="meta" id="meta"></p>
+  </div>
+  <div class="hctl">
+    <div class="seg" id="mSeg"><button data-v="r" class="on" type="button">Выручка</button><button data-v="q" type="button">Спрос</button></div>
+    <div class="seg" id="gSeg" aria-label="Детализация графика"><button data-v="w" class="on" type="button">Недели</button><button data-v="m" type="button">Месяцы</button></div>
+    <label class="hz">Прогноз на <input type="number" id="hN" min="1" max="104" step="1" value="13" aria-label="Горизонт прогноза"><select id="hU" aria-label="Единица горизонта"><option value="w">нед</option><option value="m">мес</option></select></label>
+  </div>
+</header>
+
+<!-- DATA -->
+<section class="card dbar" id="dataCard">
+  <div class="drop" id="drop">
+    <div class="what"><b>Данные</b> <span class="file" id="fileInfo"></span></div>
+    <div class="btns">
+      <label class="btn pri" for="fileIn">Загрузить выгрузку 1С</label>
+      <input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt" hidden>
+      <button class="btn" id="demoBtn" type="button">Демо</button>
+      <button class="btn" id="setupBtn" type="button" aria-expanded="false" aria-controls="setup">Колонки и товары</button>
+      <span class="stale" id="stale" hidden>прогноз устарел</span>
+      <button class="btn pri" id="runBtn" type="button">Построить прогноз</button>
+    </div>
+  </div>
+  <div id="setup" hidden>
+    <div class="setup">
+      <div class="stp">
+        <header><span class="num">1</span><span class="t">Колонки</span><span class="s">нажмите строку превью, чтобы сделать её шапкой</span></header>
+        <div class="opts">
+          <label id="sheetWrap">Лист <select id="sheetSel"></select></label>
+          <label>Шапка, строка <input type="number" id="hdrIn" min="1" step="1"></label>
+          <label>Дата <select id="dfSel"><option value="auto">ДД.ММ.ГГГГ</option><option value="mdy">ММ.ДД.ГГГГ</option></select></label>
+          <label><input type="checkbox" id="optTot" checked> без «Итого»</label>
+          <label><input type="checkbox" id="optRet" checked> без возвратов</label>
+        </div>
+        <div class="prev" id="prev"></div>
+        <div class="map" id="map"></div>
+      </div>
+      <div class="stp">
+        <header><span class="num">2</span><span class="t">Проверка и товары</span><span class="s">одинаковое название объединяет товары</span></header>
+        <div id="chkMsg"></div>
+        <div class="chips" id="chips"></div>
+        <div class="ctl"><input type="search" id="skuQ" placeholder="Найти товар" aria-label="Найти товар"><button class="btn sm" id="resetEd" type="button">Сбросить правки</button><span id="skuCnt" class="s"></span></div>
+        <div class="tw scroll"><table class="sku" id="skuT"></table></div>
+        <div class="btns" style="margin-top:10px"><button class="btn sm" id="expData" type="button">Скачать в едином формате</button><button class="btn sm" id="tplBtn" type="button">Шаблон</button><button class="btn sm" id="demoDl" type="button">Демо-файл</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="dash">
+<section class="kpis" id="kpis"></section>
+
+<section class="card">
+  <div class="ch"><div class="h2">Динамика и сценарии</div><div class="leg"><span><i style="background:var(--hist)"></i>Факт</span><span><i style="background:var(--red)"></i>Негативный</span><span><i style="background:var(--acc)"></i>Базовый</span><span><i style="background:var(--cy)"></i>Позитивный</span></div></div>
+  <div class="selbar"><span id="selTxt"></span><span class="btns"><button class="btn sm" id="zoomBtn" type="button" hidden>Приблизить</button><button class="btn sm" id="resetZ" type="button" hidden>Сбросить масштаб</button></span></div>
+  <div class="chart" id="main"></div>
+</section>
+
+<section class="grid g3">
+  <div class="card">
+    <div class="h2">Проверка на факте</div>
+    <p class="d" id="btD"></p>
+    <div class="chart" id="bt"></div>
+    <div class="tw"><table id="qt" class="qt"></table></div>
+  </div>
+  <div class="card">
+    <div class="ch"><div class="h2">Сезонность</div><select id="skuSel" aria-label="Товар"></select></div>
+    <p class="d" id="seasonNote"></p>
+    <div class="chart" id="season"></div>
+  </div>
+  <div class="card">
+    <div class="h2">Цена и спрос</div>
+    <p class="d" id="curveD"></p>
+    <div class="chart" id="curve"></div>
+    <div class="leg"><span><i style="background:#3A5287;height:8px"></i>Спрос</span><span><i style="background:var(--cy);height:8px"></i>Выручка</span></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="ch"><div class="h2">По товарам</div><span class="d" id="skD" style="margin:0"></span><button class="btn sm" id="expFc" type="button">Прогноз в Excel</button></div>
+  <div class="tw scroll"><table id="skt"></table></div>
+</section>
+</div>
+
+<footer><span>Автор: Мария · файл обрабатывается в браузере и никуда не отправляется · здесь открытая облегчённая модель (тренд, сезонность, цена, промо), рабочая версия на LightGBM и нейросетях показывается на собеседовании</span><span id="foot"></span></footer>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ================= utils ================= */
+const $=id=>document.getElementById(id);
+const C={"Негативный":"#FF5C7A","Базовый":"#2F86FF","Позитивный":"#30E3F0"};
+const SC=["Негативный","Базовый","Позитивный"];
+const NS="http://www.w3.org/2000/svg";
+const fmt=(x,d=0)=>x==null||!isFinite(x)?"—":x.toLocaleString("ru-RU",{minimumFractionDigits:d,maximumFractionDigits:d}).replace(/ | /g," ");
+const MN=["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+const MNP=["январе","феврале","марте","апреле","мае","июне","июле","августе","сентябре","октябре","ноябре","декабре"];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function el(t,a={},p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function nice(mx){if(!(mx>0))mx=1;const p=Math.pow(10,Math.floor(Math.log10(mx)));const s=[1,2,2.5,5,10].find(v=>v*p*4>=mx)*p;return{step:s,max:Math.ceil(mx/s)*s}}
+const short=v=>Math.abs(v)>=1e6?fmt(v/1e6,1)+" млн":Math.abs(v)>=1e3?fmt(v/1e3,0)+" тыс":fmt(v);
+const sum=a=>{let s=0;for(const v of a)s+=v;return s};
+const mean=a=>a.length?sum(a)/a.length:0;
+function quant(a,p){const s=[...a].sort((x,y)=>x-y);if(!s.length)return 0;const i=(s.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return s[lo]+(s[hi]-s[lo])*(i-lo)}
+const median=a=>quant(a,.5);
+function variance(a){const m=mean(a);return mean(a.map(v=>(v-m)**2))}
+/* day numbers: days since 1970-01-01 UTC; Monday-based weeks */
+const dnOf=(y,m,d)=>Math.round(Date.UTC(y,m-1,d)/864e5);
+const wk=dn=>dn-((dn%7+7+3)%7);
+const dObj=dn=>new Date(dn*864e5);
+const dt=dn=>{const d=dObj(dn);return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+String(d.getUTCFullYear()).slice(2)};
+const dtFull=dn=>{const d=dObj(dn);return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+d.getUTCFullYear()};
+const monthOf=dn=>dObj(dn).getUTCMonth();
+const isoOf=dn=>dObj(dn).toISOString().slice(0,10);
+function toast(t){const e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),3200)}
+const LS={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* lazy libraries */
+const LIB={xlsx:"https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",exceljs:"https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"};
+const libP={};
+function lib(name){if(name==="xlsx"&&window.XLSX)return Promise.resolve(window.XLSX);if(name==="exceljs"&&window.ExcelJS)return Promise.resolve(window.ExcelJS);
+ return libP[name]||(libP[name]=new Promise((ok,no)=>{const s=document.createElement("script");s.src=LIB[name];s.onload=()=>ok(name==="xlsx"?window.XLSX:window.ExcelJS);s.onerror=()=>{delete libP[name];no(new Error("Не удалось загрузить библиотеку для Excel. Проверьте интернет и попробуйте ещё раз."))};document.head.appendChild(s)}))}
+
+/* file saving: artifact viewer capability, else a normal browser download */
+async function saveFile(name,data){
+ if(window.claude&&typeof window.claude.use==="function"){
+  try{const dl=await window.claude.use("downloads");
+   if(dl){await dl.save({filename:name,data});toast("Файл сохранён: "+name);return}}
+  catch(e){const c=e&&e.code;if(c==="declined")return;if(c==="rate_limited"){toast("Подождите пару секунд и нажмите ещё раз");return}
+   if(c&&!["unavailable","not_granted","capability_disabled","capability_removed"].includes(c)){toast("Не удалось сохранить файл");return}}}
+ const blob=data instanceof Blob?data:new Blob([data]);const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}
+
+/* ================= parsing ================= */
+function parseNum(v){if(v==null||v==="")return null;if(typeof v==="number")return v;if(typeof v==="boolean")return v?1:0;
+ let s=String(v).replace(/[\s  ]/g,"").replace(/(руб\.?|р\.|₽|шт\.?|кг)$/i,"");if(!s)return null;
+ if(s.includes(",")&&s.includes("."))s=s.replace(/\./g,"").replace(",",".");else s=s.replace(",",".");
+ if(!/^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(s))return NaN;return parseFloat(s)}
+function parseDate(v,fmt){if(v==null||v==="")return null;
+ if(v instanceof Date){if(isNaN(v))return null;return Math.round((v.getTime()-v.getTimezoneOffset()*6e4)/864e5)}
+ if(typeof v==="number"){if(v>20000&&v<80000)return Math.floor(v)-25569;return null}
+ const s=String(v).trim().split(/[\sT]/)[0];let m,y,mo,d;
+ if(m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)){y=+m[1];mo=+m[2];d=+m[3]}
+ else if(m=s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2}|\d{4})$/)){let a=+m[1],b=+m[2];y=+m[3];if(y<100)y+=2000;
+  if(fmt==="mdy"){mo=a;d=b}else{d=a;mo=b}}
+ else return null;
+ if(mo<1||mo>12||d<1||d>31||y<1990||y>2100)return null;return dnOf(y,mo,d)}
+function isPromo(v){if(v==null||v==="")return 0;if(typeof v==="number")return v>0?1:0;if(typeof v==="boolean")return v?1:0;
+ const s=String(v).trim().toLowerCase();if(["нет","0","false","-","no","n","ложь"].includes(s))return 0;const n=parseNum(s);if(n!=null&&!isNaN(n))return n>0?1:0;return 1}
+function parseCSV(text){const lines=text.split(/\r?\n/).slice(0,20);const cnt=ch=>sum(lines.map(l=>l.split(ch).length-1));
+ const dl=[";",",","\t"].sort((a,b)=>cnt(b)-cnt(a))[0];const out=[];let row=[],f="",q=false;
+ for(let i=0;i<text.length;i++){const c=text[i];
+  if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c==='"')q=true;else if(c===dl){row.push(f);f=""}else if(c==="\n"||c==="\r"){if(c==="\r"&&text[i+1]==="\n")i++;row.push(f);out.push(row);row=[];f=""}else f+=c}
+ if(f||row.length){row.push(f);out.push(row)}return out.map(r=>r.map(v=>v===""?null:v))}
+
+const FIELDS=[
+ {k:"date",n:"Дата",req:1,hint:"день продажи или начало недели"},
+ {k:"sku",n:"Товар",req:1,hint:"номенклатура"},
+ {k:"qty",n:"Количество",req:1,hint:"продано, шт или кг"},
+ {k:"rev",n:"Выручка",req:0,hint:"сумма продажи, руб"},
+ {k:"price",n:"Цена",req:0,hint:"нужна, если нет выручки"},
+ {k:"promo",n:"Промо",req:0,hint:"признак акции или сумма скидки"}];
+const SYN={
+ promo:[/промо/,/акци/,/скидк/,/promo|discount/],
+ price:[/^цена/,/price/],
+ qty:[/количеств/,/кол-?во/,/^кол\.?$/,/продано/,/^шт/,/qty|quantity/],
+ rev:[/выручк/,/^сумма(?!.*скидк)(?!.*себест)/,/revenue|sales/],
+ date:[/^дата/,/период/,/^день/,/^неделя/,/^date/],
+ sku:[/номенклатур/,/^товар/,/наименован/,/^sku/,/product/]};
+const ORDER=["promo","price","qty","rev","date","sku"];
+const norm=v=>v==null?"":String(v).trim().toLowerCase();
+function fieldOf(h){const s=norm(h);if(!s)return null;for(const k of ORDER)if(SYN[k].some(r=>r.test(s)))return k;return null}
+function detectHeader(aoa){let best=0,bs=0;for(let i=0;i<Math.min(40,aoa.length);i++){const r=aoa[i]||[];const sc=new Set(r.map(fieldOf).filter(Boolean)).size;if(sc>bs){bs=sc;best=i}}return bs>=2?best:0}
+function autoMap(hdr){const m={};hdr.forEach((h,i)=>{const k=fieldOf(h);if(k&&m[k]==null)m[k]=i});return m}
+const sig=hdr=>hdr.map(norm).join("|");
+
+/* ================= state ================= */
+const S={file:"",sheets:{},sheetNames:[],sheet:"",hdr:0,map:{},opts:{df:"auto",tot:true,ret:true},rename:{},off:new Set(),rows:[],stats:null,prod:[],demo:true};
+
+/* ================= demo 1C export ================= */
+function demoAoa(){
+ let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return (seed-1)/2147483646};
+ const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+ const P=[["Мандарины 1 кг",230,95,"win",-.15],["Минеральная вода 1,5 л",90,180,"sum1",-.4],["Чай чёрный 100 пак",280,60,"win1",-.7],["Какао-напиток 300 г",300,40,"win",-.6],
+  ["Холодный чай 0,5 л",110,85,"sum",-.7],["Квас 1,5 л",150,60,"sum",-.6],["Лимонад 1 л",120,70,"sum",-.6],["Мороженое пломбир 80 г",95,95,"sum",-.6]];
+ const seas=(t,dn)=>{const ph=2*Math.PI*((dn-dnOf(2024,1,1))%365.25)/365.25;const c=Math.cos(ph-2*Math.PI*196/365);
+  return t==="sum"?Math.exp(.75*c):t==="sum1"?Math.exp(.3*c):t==="win"?Math.exp(-.6*c):Math.exp(-.25*c)};
+ const d0=dnOf(2024,1,1),d1=dnOf(2026,9,27);
+ const promo=P.map(()=>{const s=new Set();for(let w=d0;w<=d1;w+=7)if(rnd()<.07){s.add(w);s.add(w+7)}return s});
+ const out=[["Продажи по номенклатуре"],["Период: "+dtFull(d0)+" - "+dtFull(d1)],["Склад: все магазины сети"],[],["Период","Номенклатура","Склад","Количество","Сумма продажи","Сумма скидки"]];
+ let tq=0,tr=0,td=0;
+ for(let dn=d0;dn<=d1;dn++){const wd=(dn%7+7+3)%7,dow=wd>=4?1.25:.92,yr=(dn-d0)/365;
+  P.forEach(([n,p0,base,t,el],j)=>{const price=Math.round(p0*(1+.06*Math.floor(yr+.3*j/8))/10)*10;const pr=promo[j].has(wk(dn));const pp=pr?price*.8:price;
+   const lam=base/7*seas(t,dn)*dow*(1+.05*yr)*Math.pow(pp/price,el*1.0)*(pr?1.35:1)*Math.exp(.18*gauss());
+   const q=Math.max(0,Math.round(lam+gauss()*Math.sqrt(lam)*.4));if(!q)return;
+   const r=Math.round(q*pp*100)/100,disc=pr?Math.round(q*(price-pp)*100)/100:null;tq+=q;tr+=r;td+=disc||0;
+   out.push([dtFull(dn),n,"Розница",q,r,disc])})}
+ out.push(["Итого",null,null,tq,Math.round(tr*100)/100,Math.round(td*100)/100]);return out}
+
+/* ================= loading ================= */
+function setWorkbook(name,sheets,demo){S.file=name;S.sheets=sheets;S.sheetNames=Object.keys(sheets);S.demo=!!demo;
+ S.sheet=S.sheetNames.find(n=>(sheets[n]||[]).length>1)||S.sheetNames[0];S.rename={};S.off=new Set();pickSheet()}
+function pickSheet(){const aoa=S.sheets[S.sheet]||[];S.hdr=detectHeader(aoa);applyHeader(true)}
+function applyHeader(auto){const aoa=S.sheets[S.sheet]||[];const hdr=aoa[S.hdr]||[];
+ const saved=LS.get("map:"+sig(hdr));S.map=saved&&auto?saved:autoMap(hdr);renderLoad();refresh()}
+async function readFile(f){
+ $("fileInfo").innerHTML="Читаю <b>"+esc(f.name)+"</b>…";
+ try{const buf=await f.arrayBuffer();let sheets={};
+  if(/\.(csv|txt)$/i.test(f.name)){let txt;try{txt=new TextDecoder("utf-8",{fatal:true}).decode(buf)}catch(e){txt=new TextDecoder("windows-1251").decode(buf)}
+   sheets[f.name.replace(/\.\w+$/,"")]=parseCSV(txt.replace(/^﻿/,""))}
+  else{const X=await lib("xlsx");const wb=X.read(new Uint8Array(buf),{type:"array",cellDates:true});
+   wb.SheetNames.forEach(n=>{sheets[n]=X.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null,blankrows:true})})}
+  if(!Object.values(sheets).some(a=>a.length>1))throw new Error("В файле нет строк с данными.");
+  setWorkbook(f.name,sheets,false);openSetup(true);toast("Файл загружен: проверьте колонки и нажмите «Построить прогноз»");}
+ catch(e){$("fileInfo").innerHTML='<span style="color:var(--red)">Не удалось прочитать файл: '+esc(e.message||e)+". Сохраните выгрузку из 1С как .xlsx или .csv и загрузите снова.</span>"}}
+
+/* ================= render: load & mapping ================= */
+const colL=i=>{let s="";i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s};
+function cellTxt(v){if(v==null)return"";if(v instanceof Date)return isNaN(v)?"":dtFull(parseDate(v));if(typeof v==="number")return fmt(v,Number.isInteger(v)?0:2);return String(v)}
+function renderLoad(){
+ const aoa=S.sheets[S.sheet]||[];
+ $("fileInfo").innerHTML=(S.demo?"демо-выгрузка ":"")+"<b>"+esc(S.file)+"</b> · "+fmt(aoa.length)+" строк";
+ $("sheetWrap").hidden=S.sheetNames.length<2;$("sheetSel").innerHTML=S.sheetNames.map(n=>`<option${n===S.sheet?" selected":""}>${esc(n)}</option>`).join("");
+ $("hdrIn").value=S.hdr+1;$("hdrIn").max=aoa.length;$("dfSel").value=S.opts.df;$("optTot").checked=S.opts.tot;$("optRet").checked=S.opts.ret;
+ const nc=Math.min(30,Math.max(1,...aoa.slice(0,S.hdr+40).map(r=>(r||[]).length)));
+ const inv={};for(const k in S.map)if(S.map[k]!=null)inv[S.map[k]]=FIELDS.find(f=>f.k===k).n;
+ const from=Math.max(0,S.hdr-4),to=Math.min(aoa.length,S.hdr+9);
+ let h="<table><thead><tr><th class='rn'>#</th>";for(let c=0;c<nc;c++)h+=`<th>${colL(c)}${inv[c]?`<span class="chip">${inv[c]}</span>`:""}</th>`;h+="</tr></thead><tbody>";
+ for(let i=from;i<to;i++){const r=aoa[i]||[];h+=`<tr class="${i===S.hdr?"hdr":i<S.hdr?"pre data":"data"}" data-i="${i}" title="Сделать строку ${i+1} шапкой"><td class="rn">${i+1}</td>`;for(let c=0;c<nc;c++)h+=`<td>${esc(cellTxt(r[c]))}</td>`;h+="</tr>"}
+ $("prev").innerHTML=h+"</tbody></table>";
+ const hdr=aoa[S.hdr]||[];const opt=(sel)=>`<option value="">не выбрано</option>`+hdr.map((v,i)=>v==null||v===""?"":`<option value="${i}"${sel===i?" selected":""}>${colL(i)} · ${esc(cellTxt(v))}</option>`).join("");
+ $("map").innerHTML=FIELDS.map(f=>`<label><b>${f.n}${f.req?"<em>*</em>":""}</b><select id="map_${f.k}" data-k="${f.k}">${opt(S.map[f.k])}</select><span>${f.hint}</span></label>`).join("");
+ $("map").querySelectorAll("select").forEach(s=>s.onchange=()=>{const k=s.dataset.k;S.map[k]=s.value===""?null:+s.value;
+  for(const o in S.map)if(o!==k&&S.map[o]===S.map[k]&&S.map[k]!=null)S.map[o]=null;LS.set("map:"+sig(hdr),S.map);renderLoad();refresh()});
+ $("prev").querySelectorAll("tr.data").forEach(tr=>tr.onclick=()=>{S.hdr=+tr.dataset.i;applyHeader(true)})}
+
+/* ================= normalize ================= */
+function normalize(){
+ const aoa=S.sheets[S.sheet]||[],m=S.map,o=S.opts;const st={read:0,ok:0,drop:{},err:null};const add=k=>st.drop[k]=(st.drop[k]||0)+1;
+ const miss=FIELDS.filter(f=>f.req&&m[f.k]==null).map(f=>f.n);
+ if(miss.length){st.err="Выберите колонки: "+miss.join(", ")+".";return{rows:[],st}}
+ if(m.rev==null&&m.price==null){st.err="Выберите колонку «Выручка» или «Цена»: без них нельзя посчитать выручку.";return{rows:[],st}}
+ const rows=[];
+ for(let i=S.hdr+1;i<aoa.length;i++){const r=aoa[i];if(!r||r.every(v=>v==null||v===""))continue;st.read++;
+  if(o.tot&&r.some(v=>typeof v==="string"&&/^\s*(итого|всего|total)(?![а-яёa-z])/i.test(v))){add("строки «Итого»");continue}
+  const dn=parseDate(r[m.date],o.df);if(dn==null){add("нет даты или неверный формат");continue}
+  const sku=r[m.sku]==null?"":String(r[m.sku]).trim();if(!sku){add("нет товара");continue}
+  const q=parseNum(r[m.qty]);if(q==null||isNaN(q)){add("количество не число");continue}
+  if(q===0){add("нулевое количество");continue}
+  if(q<0&&o.ret){add("возвраты");continue}
+  let rv=m.rev!=null?parseNum(r[m.rev]):null;const pr=m.price!=null?parseNum(r[m.price]):null;
+  if(rv==null||isNaN(rv))rv=(pr!=null&&!isNaN(pr))?q*pr:null;
+  if(rv==null){add("нет выручки и цены");continue}
+  rows.push({dn,o:sku,q,r:rv,p:m.promo!=null?isPromo(r[m.promo]):0});st.ok++}
+ return{rows,st}}
+function prodStats(rows){const M=new Map();for(const r of rows){let p=M.get(r.o);if(!p){p={o:r.o,n:0,q:0,r:0,w:new Set()};M.set(r.o,p)}p.n++;p.q+=r.q;p.r+=r.r;p.w.add(wk(r.dn))}
+ return[...M.values()].map(p=>({o:p.o,n:p.n,q:p.q,r:p.r,w:p.w.size})).sort((a,b)=>b.r-a.r)}
+let dirty=false;
+function refresh(){const {rows,st}=normalize();S.rows=rows;S.stats=st;S.prod=prodStats(rows);renderCheck();markStale()}
+function markStale(){dirty=true;$("stale").hidden=!lastRun}
+function renderCheck(){const st=S.stats;let msg="";
+ if(st.err)msg=`<p class="msg err">${esc(st.err)}</p>`;
+ else if(!S.rows.length)msg=`<p class="msg err">Ни одна строка не прочиталась. Проверьте строку шапки и формат даты: в превью видно, что лежит в колонках.</p>`;
+ else{const ds=S.rows.map(r=>r.dn);let mn=Infinity,mx=-Infinity;for(const d of ds){if(d<mn)mn=d;if(d>mx)mx=d}
+  const dropped=sum(Object.values(st.drop));
+  msg=dropped/st.read>.2?`<p class="msg warn">Отброшено ${fmt(dropped/st.read*100)}% строк. Если это не итоги и не возвраты, проверьте сопоставление колонок.</p>`:`<p class="msg ok">Данные в порядке: период ${dtFull(mn)} - ${dtFull(mx)}.</p>`}
+ $("chkMsg").innerHTML=msg;
+ const ch=[`<span class="chip2">Прочитано строк <b>${fmt(st.read)}</b></span>`,`<span class="chip2 okc">Принято <b>${fmt(st.ok)}</b></span>`]
+  .concat(Object.entries(st.drop).map(([k,v])=>`<span class="chip2 warn">${esc(k)} <b>${fmt(v)}</b></span>`));
+ if(S.rows.length)ch.push(`<span class="chip2">Товаров <b>${fmt(S.prod.length)}</b></span>`);
+ $("chips").innerHTML=st.err?"":ch.join("");renderSku()}
+function renderSku(){const q=norm($("skuQ").value);const list=S.prod.filter(p=>!q||norm(p.o).includes(q)||norm(S.rename[p.o]||"").includes(q));const show=list.slice(0,200);
+ $("skuCnt").textContent=list.length>200?`показаны 200 из ${fmt(list.length)}, остальные через поиск`:"";
+ $("skuT").innerHTML=S.prod.length?`<tr><th></th><th style="text-align:left">Товар в файле</th><th style="text-align:left">Название в прогнозе</th><th>Строк</th><th>Количество</th><th>Выручка, руб</th><th>Недель</th></tr>`+
+  show.map((p,i)=>{const on=!S.off.has(p.o);return `<tr class="${on?"":"off"}" data-o="${esc(p.o)}"><td><input type="checkbox" ${on?"checked":""} aria-label="Учитывать в прогнозе"></td><td class="nm">${esc(p.o)}${p.w<20?'<span class="tag">мало истории</span>':""}</td>
+   <td class="nm"><input type="text" value="${esc(S.rename[p.o]||"")}" placeholder="${esc(p.o)}" aria-label="Название в прогнозе"></td><td>${fmt(p.n)}</td><td>${fmt(p.q)}</td><td>${fmt(p.r)}</td><td>${fmt(p.w)}</td></tr>`}).join(""):"";
+ $("skuT").querySelectorAll("tr[data-o]").forEach(tr=>{const o=tr.dataset.o;
+  tr.querySelector("input[type=checkbox]").onchange=e=>{e.target.checked?S.off.delete(o):S.off.add(o);tr.classList.toggle("off",!e.target.checked);markStale()};
+  tr.querySelector("input[type=text]").onchange=e=>{const v=e.target.value.trim();if(v&&v!==o)S.rename[o]=v;else delete S.rename[o];markStale()}})}
+
+/* final rows for forecast & export */
+function finalRows(){return S.rows.filter(r=>!S.off.has(r.o)).map(r=>({dn:r.dn,s:S.rename[r.o]||r.o,q:r.q,r:r.r,p:r.p}))}
+
+/* ================= weekly data ================= */
+function buildWeekly(rows){
+ if(!rows.length)throw new Error("Нет строк для прогноза: проверьте колонки и отмеченные товары.");
+ const days=[...new Set(rows.map(r=>r.dn))].sort((a,b)=>a-b);const gaps=[];for(let i=1;i<days.length;i++)gaps.push(days[i]-days[i-1]);
+ const mg=gaps.length?median(gaps):1;if(mg>=25)throw new Error("Похоже, в файле продажи по месяцам. Для прогноза нужна выгрузка по дням или неделям.");
+ const weekly=mg>=6;let w0=wk(days[0]),w1=wk(days.at(-1));
+ if(!weekly){if((days[0]%7+7+3)%7!==0)w0+=7;if((days.at(-1)%7+7+3)%7!==6)w1-=7}
+ const nW=(w1-w0)/7+1;if(nW<12)throw new Error(`В данных ${Math.max(nW,0)} полных недель. Для прогноза нужно хотя бы 12, лучше год и больше.`);
+ const M=new Map();
+ for(const r of rows){const w=wk(r.dn);if(w<w0||w>w1)continue;const i=(w-w0)/7;let s=M.get(r.s);
+  if(!s){s={name:r.s,q:new Float64Array(nW),r:new Float64Array(nW),pq:new Float64Array(nW)};M.set(r.s,s)}s.q[i]+=r.q;s.r[i]+=r.r;if(r.p)s.pq[i]+=r.q}
+ const weeks=Array.from({length:nW},(_,i)=>w0+7*i);const skus=[];
+ for(const s of M.values()){let st=0;while(st<nW&&s.q[st]<=0)st++;if(st>=nW)continue;
+  const q=[],price=[],pr=[];let lastP=NaN;
+  for(let i=st;i<nW;i++){q.push(Math.max(0,s.q[i]));const p=s.q[i]>0?s.r[i]/s.q[i]:NaN;if(isFinite(p)&&p>0)lastP=p;price.push(isFinite(p)&&p>0?p:lastP);pr.push(s.q[i]>0?s.pq[i]/s.q[i]:0)}
+  const fp=price.find(v=>isFinite(v));for(let i=0;i<price.length;i++){if(!isFinite(price[i]))price[i]=fp}
+  skus.push({name:s.name,st,q,price,pr,rev:Array.from(s.r.slice(st))})}
+ const hq=new Array(nW).fill(0),hr=new Array(nW).fill(0);for(const s of M.values())for(let i=0;i<nW;i++){hq[i]+=s.q[i];hr[i]+=s.r[i]}
+ return{weeks,nW,skus,hq,hr,weekly,rows:rows.length,d0:days[0],d1:days.at(-1)}}
+
+/* ================= model ================= */
+function solve(A,b){const n=b.length;const M=A.map((r,i)=>[...r,b[i]]);
+ for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;[M[c],M[p]]=[M[p],M[c]];const v=M[c][c]||1e-12;
+  for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c]/v;if(f)for(let k=c;k<=n;k++)M[r][k]-=f*M[c][k]}}
+ return M.map((r,i)=>r[n]/(r[i]||1e-12))}
+function ridge(X,y,lam){const n=X.length,k=X[0].length;const mu=new Array(k).fill(0),sd=new Array(k).fill(1);
+ for(let j=0;j<k;j++){mu[j]=mean(X.map(r=>r[j]));sd[j]=Math.sqrt(mean(X.map(r=>(r[j]-mu[j])**2)))||1}
+ const ym=mean(y);const Z=X.map(r=>r.map((v,j)=>(v-mu[j])/sd[j]));const A=Array.from({length:k},()=>new Array(k).fill(0)),b=new Array(k).fill(0);
+ for(let i=0;i<n;i++){const z=Z[i],yi=y[i]-ym;for(let a=0;a<k;a++){b[a]+=z[a]*yi;for(let c=a;c<k;c++)A[a][c]+=z[a]*z[c]}}
+ for(let a=0;a<k;a++){for(let c=0;c<a;c++)A[a][c]=A[c][a];A[a][a]+=lam}
+ const bz=solve(A,b);const w=bz.map((v,j)=>v/sd[j]);const b0=ym-sum(w.map((v,j)=>v*mu[j]));return{b0,w}}
+const PH=dn=>2*Math.PI*((dn+3.5)%365.25)/365.25;
+/* fit one SKU: q, price, promo share arrays aligned to week start day numbers dns */
+function fitSku(q,price,pr,dns,nTotal){
+ const n=q.length;const tot=sum(q);
+ if(tot<=0||sum(q.slice(-8))<=0)return{kind:"zero",elast:null,ref:price.at(-1)||0,predict:()=>({m:0,lo:0,hi:0,p20:0,p80:0})};
+ const recentIdx=[];for(let i=Math.max(0,n-52);i<n;i++)recentIdx.push(i);
+ const reg=recentIdx.filter(i=>pr[i]<.3).map(i=>price[i]);const ref=median(reg.length?reg:recentIdx.map(i=>price[i]));
+ if(n<20){const lv=mean(q.slice(-8));return{kind:"short",elast:null,ref,predict:()=>({m:lv,lo:lv*.55,hi:lv*1.45,p20:lv*.75,p80:lv*1.25})}}
+ const lp=price.map(p=>Math.log(p/ref));
+ const go=(useP)=>{const useT=n>=26,useS=n>=56,useM=variance(pr)>1e-4;useP=useP&&variance(lp)>1e-4;
+  const f=(dn,t,l,s)=>{const a=[];if(useT)a.push(t/52);if(useS){const ph=PH(dn);for(let k=1;k<=3;k++)a.push(Math.sin(k*ph),Math.cos(k*ph))}if(useP)a.push(l);if(useM)a.push(s);return a};
+  const X=q.map((_,i)=>f(dns[i],i,lp[i],pr[i]));const y=q.map(v=>Math.log1p(v));
+  if(!X[0].length){const m=mean(y);return{useP:false,pi:-1,f,b0:m,w:[],y,X}}
+  const {b0,w}=ridge(X,y,3);const pi=useP?(useT?1:0)+(useS?6:0):-1;return{useP,pi,f,b0,w,y,X}};
+ let F=go(true);if(F.useP&&F.w[F.pi]>0)F=go(false);
+ let elast=F.useP?F.w[F.pi]:null;if(elast!=null&&elast<-3){F.w[F.pi]=-3;elast=-3}
+ const lin=x=>F.b0+sum(x.map((v,j)=>v*F.w[j]));
+ const res=F.y.map((v,i)=>v-lin(F.X[i]));const md=median(res);const wr=res.map(r=>md+(r-md)*1.25);
+ const smear=mean(wr.map(Math.exp));const Q={lo:quant(wr,.1),hi:quant(wr,.9),p20:quant(wr,.2),p80:quant(wr,.8)};
+ return{kind:"model",elast,ref,smear,
+  predict:(dn,h,p,s)=>{const t=(n-1)+.5*h;const x=F.f(dn,t,Math.log(p/ref),s);const z=lin(x);const e=v=>Math.max(0,Math.exp(z+v)-1);
+   return{m:Math.max(0,Math.exp(z)*smear-1),lo:e(Q.lo),hi:e(Q.hi),p20:e(Q.p20),p80:e(Q.p80)}}}}
+
+function seasonIdx(s,weeks){if(s.q.length<52)return null;const acc=new Array(12).fill(0),cnt=new Array(12).fill(0);
+ s.q.forEach((v,i)=>{const m=monthOf(weeks[s.st+i]+3);acc[m]+=v;cnt[m]++});if(cnt.some(c=>!c))return null;
+ const avg=acc.map((a,i)=>a/cnt[i]);const mm=mean(avg);return mm>0?avg.map(v=>Math.round(v/mm*100)):null}
+
+/* run everything */
+function runModel(W,H){
+ const {weeks,nW,skus}=W;const fut=Array.from({length:H},(_,h)=>weeks[nW-1]+7*(h+1));
+ const BT=nW>=36?8:nW>=20?4:0;const cut=nW-BT;
+ const out={sku:{},sc:{},bt:null,quality:null,curve:null,H,BT};
+ SC.forEach(k=>out.sc[k]={q:new Array(H).fill(0),r:new Array(H).fill(0)});
+ const btQ={f:new Array(BT).fill(0),p:new Array(BT).fill(0),lo:new Array(BT).fill(0),hi:new Array(BT).fill(0)};
+ let eM=0,eLY=0,eMA=0,aSum=0,cov=0,covN=0,lyAll=true,rvErr=new Array(BT).fill(0),rvF=new Array(BT).fill(0);
+ const KS=[-10,-5,0,5,10],cq=KS.map(()=>0),cr=KS.map(()=>0);
+ for(const s of skus){const dns=s.q.map((_,i)=>weeks[s.st+i]);
+  const M=fitSku(s.q,s.price,s.pr,dns,nW);
+  const ratio=(()=>{const a=Math.max(0,s.q.length-52);const qq=sum(s.q.slice(a)),rr=sum(s.rev.slice(a));return qq>0&&M.ref>0?(rr/qq)/M.ref:1})();
+  const share=mean(s.pr.slice(-52));const fp=M.ref*ratio;
+  const rec={name:s.name,price:M.ref,elast:M.elast,kind:M.kind,rev:{},q:{},season:seasonIdx(s,weeks),err:null};
+  SC.forEach(k=>{rec.rev[k]=0;rec.q[k]=0});
+  fut.forEach((dn,h)=>{const p=M.predict(dn,h+1,M.ref,share);const vals={"Негативный":p.p20,"Базовый":p.m,"Позитивный":p.p80};
+   SC.forEach(k=>{out.sc[k].q[h]+=vals[k];out.sc[k].r[h]+=vals[k]*fp;rec.rev[k]+=vals[k]*fp;rec.q[k]+=vals[k]});
+   KS.forEach((k,j)=>{const mult=M.elast!=null?Math.pow(1+k/100,M.elast):1;cq[j]+=p.m*mult;cr[j]+=p.m*mult*fp*(1+k/100)})});
+  out.sku[s.name]=rec;
+  /* backtest */
+  if(BT){const nTr=cut-s.st;if(nTr>=4){const qt=s.q.slice(0,nTr),pt=s.price.slice(0,nTr),rt=s.pr.slice(0,nTr);
+   const Mb=fitSku(qt,pt,rt,dns.slice(0,nTr),cut);let se=0,sa=0;const ma=mean(qt.slice(-8));
+   for(let h=0;h<BT;h++){const i=nTr+h,a=s.q[i];const p=Mb.predict(dns[i],h+1,s.price[i],s.pr[i]);
+    btQ.f[h]+=a;btQ.p[h]+=p.m;btQ.lo[h]+=p.lo;btQ.hi[h]+=p.hi;eM+=Math.abs(p.m-a);aSum+=a;se+=Math.abs(p.m-a);sa+=a;
+    const pp=s.rev[i]&&a?s.rev[i]/a:s.price[i];rvF[h]+=s.rev[i]||0;rvErr[h]+=p.m*pp;
+    eMA+=Math.abs(ma-a);const li=i-52;if(li>=0)eLY+=Math.abs(s.q[li]-a);else{lyAll=false;eLY+=Math.abs(ma-a)}
+    if(a>=p.lo&&a<=p.hi)cov++;covN++}
+   rec.err=sa>0?se/sa*100:null}}}
+ if(BT&&aSum>0){out.quality={model:eM/aSum*100,ly:eLY/aSum*100,ma:eMA/aSum*100,lyAll,
+   rev:sum(rvF)>0?Math.abs(sum(rvErr)-sum(rvF))/sum(rvF)*100:null,revW:sum(rvF)>0?sum(rvErr.map((v,i)=>Math.abs(v-rvF[i])))/sum(rvF)*100:null,cov:covN?cov/covN*100:null};
+  out.bt={d:weeks.slice(cut),f:btQ.f.map(Math.round),p:btQ.p.map(Math.round),lo:btQ.lo.map(Math.round),hi:btQ.hi.map(Math.round)}}
+ SC.forEach(k=>{out.sc[k].Q=sum(out.sc[k].q);out.sc[k].R=sum(out.sc[k].r);out.sc[k].d=fut});
+ const i0=KS.indexOf(0);out.curve={k:KS,q:cq.map(v=>cq[i0]?(v/cq[i0]-1)*100:0),r:cr.map(v=>cr[i0]?(v/cr[i0]-1)*100:0)};
+ out.ly=nW>=52&&H<=52?sum(W.hr.slice(nW-52,nW-52+H)):null;
+ return out}
+
+/* ================= dashboard render ================= */
+let W=null,R=null,H=13,metric="r",lastRun=false,hN=13,hU="w";
+function calcH(){if(!W||hU==="w")return Math.max(1,Math.min(104,hN));const last=W.weeks.at(-1)+6,d=dObj(last);
+ const end=Math.round(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+hN+1,0)/864e5);return Math.max(1,Math.min(104,Math.ceil((end-last)/7)))}
+const hLabel=()=>hU==="m"?`${hN} мес`:`${H} нед`;
+function lineChart(host,{series,band,W:Wd=1000,H:Ht=360,yLabel,yFmt=short,xs,tipHead,sel,onSelect}){
+ host.innerHTML="";const pad={l:80,r:14,t:12,b:30};
+ const all=series.flatMap(s=>s.y).concat(band?band.hi:[]);const {step,max}=nice(Math.max(...all,1)*1.05);
+ const t0=Math.min(...xs),t1=Math.max(...xs);
+ const X=t=>pad.l+(t-t0)/((t1-t0)||1)*(Wd-pad.l-pad.r),Y=v=>pad.t+(1-v/max)*(Ht-pad.t-pad.b);
+ const svg=el("svg",{viewBox:`0 0 ${Wd} ${Ht}`},host);
+ for(let v=0;v<=max+1e-9;v+=step){el("line",{x1:pad.l,x2:Wd-pad.r,y1:Y(v),y2:Y(v),stroke:"#1C2E55"},svg);
+  const t=el("text",{x:pad.l-8,y:Y(v)+4,"text-anchor":"end",fill:"#7F95BE","font-size":12},svg);t.textContent=yFmt(v)}
+ if(yLabel){const cy=pad.t+(Ht-pad.t-pad.b)/2;const t=el("text",{x:14,y:cy,fill:"#7F95BE","font-size":12,transform:`rotate(-90 14 ${cy})`,"text-anchor":"middle"},svg);t.textContent=yLabel}
+ const nT=Wd<700?4:7;for(let i=0;i<=nT;i++){const tt=t0+(t1-t0)*i/nT,d=dObj(Math.round(tt));const x=pad.l+(Wd-pad.l-pad.r)*i/nT;
+  const t=el("text",{x,y:Ht-8,"text-anchor":i==0?"start":i==nT?"end":"middle",fill:"#7F95BE","font-size":12},svg);
+  t.textContent=(t1-t0)<140?String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0"):MN[d.getUTCMonth()]+" "+String(d.getUTCFullYear()).slice(2)}
+ if(band){const pts=band.d.map((d,i)=>`${X(d)},${Y(band.hi[i])}`).concat(band.d.map((d,i)=>`${X(d)},${Y(band.lo[i])}`).reverse());
+  el("polygon",{points:pts.join(" "),fill:"rgba(48,227,240,.12)"},svg)}
+ const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+ series.forEach(s=>{const pts=s.d.map((d,i)=>`${X(d)},${Y(s.y[i])}`).join(" ");
+  if(s.fill)el("polygon",{points:`${X(s.d[0])},${Y(0)} ${pts} ${X(s.d[s.d.length-1])},${Y(0)}`,fill:"rgba(47,134,255,.07)"},svg);
+  if(s.glow)el("polyline",{points:pts,fill:"none",stroke:s.c,"stroke-width":9,opacity:.16,"stroke-linejoin":"round"},svg);
+  const pl=el("polyline",{points:pts,fill:"none",stroke:s.c,"stroke-width":s.w||2.2,"stroke-linejoin":"round","stroke-dasharray":s.dash||""},svg);
+  if(s.anim&&!reduce){const len=pl.getTotalLength();pl.style.strokeDasharray=len;pl.style.strokeDashoffset=len;pl.getBoundingClientRect();pl.style.transition="stroke-dashoffset 1.4s ease .2s";pl.style.strokeDashoffset=0;setTimeout(()=>{pl.style.transition="none";pl.style.strokeDasharray=s.dash||"none";pl.style.strokeDashoffset=0},1700)}});
+ const tip=document.createElement("div");tip.className="tip";host.appendChild(tip);
+ const vl=el("line",{y1:pad.t,y2:Ht-pad.b,stroke:"#7F95BE","stroke-dasharray":"3 3",opacity:0},svg);
+ const hl=el("line",{x1:pad.l,x2:Wd-pad.r,stroke:"#7F95BE","stroke-dasharray":"3 3",opacity:0},svg);
+ const hlb=el("rect",{x:4,width:pad.l-8,height:18,rx:4,fill:"#0F2044",stroke:"#30E3F0",opacity:0},svg);
+ const hlt=el("text",{x:pad.l-8,"text-anchor":"end",fill:"#30E3F0","font-size":12,opacity:0},svg);
+ const selR=el("rect",{y:pad.t,height:Ht-pad.t-pad.b,fill:"rgba(48,227,240,.10)",stroke:"rgba(48,227,240,.55)","stroke-dasharray":"4 3",opacity:0},svg);
+ const dates=[...new Set(series.flatMap(s=>s.d))].sort((a,b)=>a-b);
+ const head=tipHead||(d=>"неделя с "+dt(d));
+ const near=mx=>{let best=dates[0],bd=1e9;for(const d of dates){const dd=Math.abs(X(d)-mx);if(dd<bd){bd=dd;best=d}}return best};
+ const showSel=(a,b)=>{const x1=X(Math.min(a,b)),x2=X(Math.max(a,b));selR.setAttribute("x",x1);selR.setAttribute("width",Math.max(2,x2-x1));selR.setAttribute("opacity",1)};
+ if(sel&&sel[1]>=t0&&sel[0]<=t1)showSel(Math.max(sel[0],t0),Math.min(sel[1],t1));
+ const pt=e=>{const r=svg.getBoundingClientRect();return{r,mx:(e.clientX-r.left)/r.width*Wd,my:(e.clientY-r.top)/r.height*Ht}};
+ let drag=null;if(onSelect){svg.style.cursor="crosshair";svg.style.touchAction="pan-y"}
+ svg.addEventListener("pointerdown",e=>{if(!onSelect||e.button>0)return;const {mx}=pt(e);drag={x:mx,d:near(mx),moved:false};try{svg.setPointerCapture(e.pointerId)}catch(_){}});
+ svg.addEventListener("pointermove",e=>{const {r,mx,my}=pt(e);const best=near(mx);
+  vl.setAttribute("x1",X(best));vl.setAttribute("x2",X(best));vl.setAttribute("opacity",.6);
+  const yy=Math.max(pad.t,Math.min(Ht-pad.b,my)),val=max*(1-(yy-pad.t)/(Ht-pad.t-pad.b));
+  hl.setAttribute("y1",yy);hl.setAttribute("y2",yy);hl.setAttribute("opacity",.45);hlb.setAttribute("y",yy-9);hlb.setAttribute("opacity",1);hlt.setAttribute("y",yy+4);hlt.textContent=yFmt(val);hlt.setAttribute("opacity",1);
+  if(drag){if(Math.abs(mx-drag.x)>6)drag.moved=true;if(drag.moved)showSel(drag.d,best)}
+  let h=`<div style="color:#7F95BE;margin-bottom:4px">${head(best)}</div>`;
+  series.forEach(s=>{const i=s.d.indexOf(best);if(i>=0&&s.name&&!(s.skip0&&i===0))h+=`<div class="r"><span style="color:${s.c}">${s.name}</span><b>${fmt(s.y[i])}</b></div>`});
+  if(band){const i=band.d.indexOf(best);if(i>=0)h+=`<div class="r"><span style="color:#7F95BE">Диапазон</span><b>${fmt(band.lo[i])} ... ${fmt(band.hi[i])}</b></div>`}
+  tip.innerHTML=h;tip.style.opacity=1;const px=X(best)/Wd*r.width;tip.style.left=Math.max(0,Math.min(px+12,r.width-tip.offsetWidth))+"px";tip.style.top="10px"});
+ svg.addEventListener("pointerup",e=>{if(!drag)return;const {mx}=pt(e);const b=near(mx),a=drag.d,mv=drag.moved;drag=null;if(mv&&a!==b)onSelect(Math.min(a,b),Math.max(a,b))});
+ svg.addEventListener("pointerleave",()=>{if(drag)return;tip.style.opacity=0;[vl,hl,hlb,hlt].forEach(x=>x.setAttribute("opacity",0))})}
+
+const MNF=["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+const monLab=d=>{const x=dObj(d);return MN[x.getUTCMonth()]+" "+String(x.getUTCFullYear()).slice(2)};
+let Z=null,SEL=null,gran="w";
+/* weeks -> calendar months: each week spread over its 7 days, only fully covered months kept */
+function monthAgg(weeks,vals){const M=new Map();
+ weeks.forEach((w,i)=>{for(let k=0;k<7;k++){const d=dObj(w+k);const key=Math.round(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)/864e5);let o=M.get(key);if(!o){o={v:0,c:0};M.set(key,o)}o.v+=vals[i]/7;o.c++}});
+ const d=[],y=[];[...M.keys()].sort((a,b)=>a-b).forEach(k=>{const o=M.get(k),dm=dObj(k);const days=new Date(Date.UTC(dm.getUTCFullYear(),dm.getUTCMonth()+1,0)).getUTCDate();if(o.c>=days){d.push(k);y.push(o.v)}});return{d,y}}
+function mainSeries(){const hv=Array.from(metric==="r"?W.hr:W.hq);const sty=k=>({c:C[k],glow:1,w:2.6,dash:k=="Базовый"?"":"5 5",skip0:1});
+ if(gran==="w"){const last=W.weeks.at(-1),lv=hv.at(-1);
+  return[{name:"Факт",d:W.weeks,y:hv,c:"#5A74A3",fill:1}].concat(SC.map(k=>({name:k,d:[last,...R.sc[k].d],y:[lv,...R.sc[k][metric]],...sty(k)})))}
+ const f=monthAgg(W.weeks,hv);const ld=f.d.at(-1),lv=f.y.at(-1);
+ return[{name:"Факт",d:f.d,y:f.y,c:"#5A74A3",fill:1}].concat(SC.map(k=>{const m=monthAgg(W.weeks.concat(R.sc[k].d),hv.concat(R.sc[k][metric]));const dd=[],yy=[];
+  m.d.forEach((d,i)=>{if(d>ld){dd.push(d);yy.push(m.y[i])}});return{name:k,d:[ld,...dd],y:[lv,...yy],...sty(k)}}))}
+function drawMain(anim){let series=mainSeries();
+ if(Z)series=series.map(s=>{const idx=[];s.d.forEach((d,i)=>{if(d>=Z[0]&&d<=Z[1])idx.push(i)});return{...s,d:idx.map(i=>s.d[i]),y:idx.map(i=>s.y[i]),skip0:s.skip0&&idx[0]===0}}).filter(s=>s.d.length);
+ series.forEach(s=>s.anim=anim&&s.name!=="Факт");const xs=series.flatMap(s=>s.d);
+ const narrow=$("main").clientWidth<640,Wd=narrow?640:1100;
+ lineChart($("main"),{series,xs:[Math.min(...xs),Math.max(...xs)],W:Wd,H:narrow?340:260,yLabel:metric=="r"?"руб":"шт",
+  tipHead:gran==="m"?(d=>{const x=dObj(d);return MNF[x.getUTCMonth()]+" "+x.getUTCFullYear()}):null,sel:SEL,onSelect:(a,b)=>{SEL=[a,b];drawMain(false)}});renderSel()}
+function renderSel(){const t=$("selTxt");$("resetZ").hidden=!Z&&!SEL;
+ if(!SEL){$("zoomBtn").hidden=true;t.textContent=(Z?"Масштаб приближен. ":"")+"Протяните мышью по графику, чтобы выделить период и увидеть суммы";return}
+ const [a,b]=SEL,u=metric==="r"?" руб":" шт",parts=[];
+ mainSeries().forEach(s=>{let v=0,n=0;s.d.forEach((d,i)=>{if(s.skip0&&i===0)return;if(d>=a&&d<=b){v+=s.y[i];n++}});if(n)parts.push(`<span style="color:${s.c}">${s.name}</span> <b>${short(v)}${u}</b>`)});
+ const from=gran==="m"?monLab(a):dt(a),to=gran==="m"?monLab(b):dt(b+6);
+ t.innerHTML=`<b>${from} - ${to}</b> · `+parts.join(" · ");$("zoomBtn").hidden=false}
+function drawBt(){const B=R.bt;if(!B){$("bt").innerHTML=`<p class="d">Для проверки нужно хотя бы 20 недель истории.</p>`;$("btD").textContent="";return}
+ lineChart($("bt"),{series:[{name:"Факт",d:B.d,y:B.f,c:"#8FA3C8",w:2.2},{name:"Прогноз",d:B.d,y:B.p,c:"#30E3F0",glow:1,w:2.6}],band:{d:B.d,lo:B.lo,hi:B.hi},xs:[B.d[0],B.d.at(-1)],W:560,H:250,yLabel:"шт",yFmt:v=>fmt(v)})}
+function renderKpis(){const q=R.quality,col=p=>p==null?"#1C2E55":p>=70?"#30E3F0":p>=40?"#F2B84B":"#FF5C7A";
+ const sc=SC.map(n=>{const s=R.sc[n];const dr=R.ly?(s.R/R.ly-1)*100:null;
+  return `<div class="kpi"><div class="l" style="color:${C[n]}">${n}</div><div class="v">${fmt(s.R/1e6,2)}<span>млн руб</span></div><div class="s">${fmt(s.Q)} шт · ${dr==null?"":(dr>0?"+":"")+fmt(dr,1)+"% г/г"}</div></div>`});
+ const m=q?[[100-q.model,"Точность, товары",`ошибка ${fmt(q.model,1)}%`],[q.revW!=null?100-q.revW:null,"Точность, выручка",q.revW!=null?`ошибка ${fmt(q.revW,1)}%`:"нет данных"],
+  [q.cov,"Факт в диапазоне","доля товаро-недель"],[(1-q.model/(q.lyAll?q.ly:q.ma))*100,q.lyAll?"Лучше, чем г/г":"Лучше правила","снижение ошибки"]]
+  :[[null,"Точность, товары","мало истории"],[null,"Точность, выручка","мало истории"],[null,"Факт в диапазоне","мало истории"],[null,"Лучше правила","мало истории"]];
+ $("kpis").innerHTML=sc.join("")+m.map(([p,t,n])=>`<div class="kpi"><div class="l">${t}</div><div class="v">${p==null?"—":fmt(p)}${p==null?"":"<span>%</span>"}</div><div class="s">${n}</div><div class="mb"><i style="width:${p==null?0:Math.max(0,Math.min(100,p))}%;background:${col(p)}"></i></div></div>`).join("")}
+function renderQuality(){const q=R.quality;if(!q){$("qt").innerHTML="";return}
+ const rows=[["Модель",q.model,1]];if(q.lyAll)rows.push(["Как в прошлом году",q.ly,0]);rows.push(["Как в последние 8 недель",q.ma,0]);
+ const mx=Math.max(...rows.map(r=>r[1]),1);
+ $("qt").innerHTML="<tr><th>Ошибка прогноза</th><th>%</th><th></th></tr>"+rows.map(([n,v,b])=>`<tr class="${b?"best":""}"><td>${n}</td><td>${fmt(v,1)}</td><td style="width:45%"><div class="bar"><i style="width:${Math.min(100,v/mx*100)}%;${b?"":"background:#5A74A3"}"></i></div></td></tr>`).join("");
+ $("btD").textContent=`Последние ${R.BT} нед спрогнозированы вслепую по данным до ${dt(R.bt.d[0])}, шт`}
+function spark(v){const w=96,h=26,mx=Math.max(...v),mn=Math.min(...v);const pts=v.map((y,i)=>`${i/11*w},${h-2-(y-mn)/(mx-mn||1)*(h-4)}`).join(" ");
+ return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="#30E3F0" stroke-width="1.8"/></svg>`}
+let names=[];
+function renderSkuTable(){names=Object.keys(R.sku).sort((a,b)=>R.sku[b].rev["Базовый"]-R.sku[a].rev["Базовый"]);const show=names.slice(0,30);
+ $("skD").textContent=`выручка за ${hLabel()}, руб`+(names.length>30?` · 30 из ${fmt(names.length)}, итог и Excel по всем`:"");
+ const tot=k=>sum(names.map(n=>R.sku[n].rev[k]));
+ $("skt").innerHTML="<tr><th>Товар</th><th>Цена, руб</th><th>Негативный</th><th>Базовый</th><th>Позитивный</th><th>Сезонность</th><th>Эластичность</th></tr>"+
+  `<tr class="tot"><td>Итого</td><td></td>${SC.map(k=>`<td>${fmt(tot(k))}</td>`).join("")}<td></td><td></td></tr>`+
+  show.map(n=>{const s=R.sku[n],e=s.elast;return `<tr><td>${esc(n)}${s.kind==="short"?'<span class="tag">мало истории</span>':s.kind==="zero"?'<span class="tag">нет продаж 8 нед</span>':""}</td><td>${fmt(s.price)}</td>${SC.map(k=>`<td>${fmt(s.rev[k])}</td>`).join("")}<td>${s.season?spark(s.season):'<span class="na">—</span>'}</td><td>${e==null?'<span class="na">—</span>':fmt(e,2)+`<span class="dot ${e<-1?"o":""}"></span>`}</td></tr>`}).join("");
+ const withS=names.filter(n=>R.sku[n].season).slice(0,300);const sel=$("skuSel"),prev=sel.value;
+ sel.innerHTML=withS.length?withS.map(n=>`<option>${esc(n)}</option>`).join(""):"<option>нет товаров с историей от года</option>";if(withS.includes(prev))sel.value=prev;drawSeason()}
+function drawSeason(){const host=$("season"),s=R.sku[$("skuSel").value];host.innerHTML="";
+ if(!s||!s.season){host.innerHTML='<p class="d">Сезонность считается для товаров, которые продавались во все 12 месяцев.</p>';$("seasonNote").textContent="";return}
+ const v=s.season,Wd=560,Ht=250,pad={l:40,r:8,t:10,b:26},mx=nice(Math.max(...v,120)*1.05).max,bw=(Wd-pad.l-pad.r)/12;
+ const svg=el("svg",{viewBox:`0 0 ${Wd} ${Ht}`},host),Y=y=>pad.t+(1-y/mx)*(Ht-pad.t-pad.b);
+ [0,100,mx].forEach(g=>{el("line",{x1:pad.l,x2:Wd-pad.r,y1:Y(g),y2:Y(g),stroke:g==100?"#7F95BE":"#1C2E55","stroke-dasharray":g==100?"3 3":""},svg);const t=el("text",{x:pad.l-6,y:Y(g)+4,"text-anchor":"end",fill:"#7F95BE","font-size":12},svg);t.textContent=g});
+ v.forEach((y,i)=>{const c=y>=115?"#30E3F0":y>=85?"#2A3C63":"#1A2A4D";const r=el("rect",{x:pad.l+i*bw+5,width:bw-10,y:Y(0),height:0,rx:4,fill:c},svg);
+  r.style.transition=`all .6s ease ${i*0.03}s`;requestAnimationFrame(()=>{r.setAttribute("y",Y(y));r.setAttribute("height",Y(0)-Y(y))});
+  const tt=el("title",{},r);tt.textContent=`${MN[i]}: ${y}`;
+  const t=el("text",{x:pad.l+i*bw+bw/2,y:Ht-8,"text-anchor":"middle",fill:"#7F95BE","font-size":12},svg);t.textContent=MN[i]});
+ const top=v.indexOf(Math.max(...v)),lo=Math.max(Math.min(...v),1);
+ $("seasonNote").textContent=`100 = средний месяц · пик в ${MNP[top]}, в ${fmt(Math.max(...v)/lo,1)} раза выше минимума`}
+function drawCurve(){const host=$("curve"),c=R.curve;host.innerHTML="";
+ const Wd=560,Ht=250,pad={l:44,r:8,t:14,b:28},mx=Math.max(...c.q.concat(c.r).map(Math.abs),1)*1.15,gw=(Wd-pad.l-pad.r)/c.k.length;
+ const svg=el("svg",{viewBox:`0 0 ${Wd} ${Ht}`},host),Y=v=>pad.t+(1-(v+mx)/(2*mx))*(Ht-pad.t-pad.b);
+ const st=nice(mx).step;for(let v=-Math.floor(mx/st)*st;v<=mx;v+=st){el("line",{x1:pad.l,x2:Wd-pad.r,y1:Y(v),y2:Y(v),stroke:Math.abs(v)<1e-9?"#7F95BE":"#1C2E55"},svg);const t=el("text",{x:pad.l-6,y:Y(v)+4,"text-anchor":"end",fill:"#7F95BE","font-size":12},svg);t.textContent=(v>0?"+":"")+fmt(v)+"%"}
+ c.k.forEach((k,i)=>{[["q","#3A5287"],["r","#30E3F0"]].forEach(([m,col],j)=>{const v=c[m][i],x=pad.l+i*gw+gw/2-26+j*27;
+  const r=el("rect",{x,width:24,y:Y(0),height:0,rx:3,fill:col},svg);r.style.transition="all .7s ease";
+  requestAnimationFrame(()=>{r.setAttribute("y",Math.min(Y(0),Y(v)));r.setAttribute("height",Math.abs(Y(v)-Y(0)))});
+  if(Math.abs(v)>0.05){const t=el("text",{x:x+12,y:v>0?Y(v)-5:Y(v)+14,"text-anchor":"middle",fill:col=="#30E3F0"?"#30E3F0":"#8FA3C8","font-size":11},svg);t.textContent=(v>0?"+":"")+fmt(v,1)}});
+  const t=el("text",{x:pad.l+i*gw+gw/2,y:Ht-8,"text-anchor":"middle",fill:"#7F95BE","font-size":12},svg);t.textContent=k==0?"текущая":(k>0?"+":"")+k+"%"})}
+
+function renderDash(anim){
+ $("meta").textContent=`${S.demo?"Демо-данные 1С":"Ваши данные"}: ${fmt(W.skus.length)} товаров, ${fmt(W.rows)} строк, ${dtFull(W.d0)} - ${dtFull(W.d1)}, ${W.nW} полных недель · прогноз на ${hLabel()}`;
+ $("foot").textContent=`Прогноз от ${dt(R.sc["Базовый"].d[0])}`;
+ 
+ $("curveD").textContent=`Изменение за ${hLabel()} при сдвиге цены всех товаров`;
+ renderKpis();drawMain(anim);drawBt();renderQuality();renderSkuTable();drawCurve()}
+
+function run(anim){
+ try{W=buildWeekly(finalRows());H=calcH();Z=SEL=null;R=runModel(W,H);lastRun=true;dirty=false;$("stale").hidden=true;$("dash").hidden=false;renderDash(anim);return true}
+ catch(e){$("chkMsg").innerHTML=`<p class="msg err">${esc(e.message||e)}</p>`;openSetup(true);toast("Прогноз не построен: смотрите «Колонки и товары»");return false}}
+
+/* ================= exports ================= */
+async function xlsxBook(build){const EX=await lib("exceljs");const wb=new EX.Workbook();build(wb);const buf=await wb.xlsx.writeBuffer();return new Uint8Array(buf)}
+const FONT={name:"Calibri",size:10},FONTB={name:"Calibri",size:10,bold:true};
+function styleSheet(ws){ws.eachRow(r=>r.eachCell({includeEmpty:true},c=>{c.font=c.font&&c.font.bold?FONTB:FONT}))}
+async function exportData(btn){const rows=finalRows();if(!rows.length){toast("Нет данных для выгрузки");return}
+ btn.disabled=true;try{rows.sort((a,b)=>a.dn-b.dn||a.s.localeCompare(b.s,"ru"));
+  const data=await xlsxBook(wb=>{const ws=wb.addWorksheet("Продажи");ws.columns=[{header:"Дата",width:12},{header:"Товар",width:40},{header:"Количество",width:12},{header:"Выручка",width:14},{header:"Цена",width:10},{header:"Промо",width:8}];
+   rows.forEach(r=>ws.addRow([dObj(r.dn),r.s,r.q,Math.round(r.r*100)/100,r.q?Math.round(r.r/r.q*100)/100:null,r.p]));
+   ws.getColumn(1).numFmt="dd.mm.yyyy";ws.getColumn(3).numFmt="#,##0.###";ws.getColumn(4).numFmt="#,##0.00";ws.getColumn(5).numFmt="#,##0.00";
+   ws.getRow(1).font=FONTB;ws.autoFilter={from:"A1",to:"F1"};ws.views=[{state:"frozen",ySplit:1}];styleSheet(ws)});
+  await saveFile("продажи_единый_формат.xlsx",data)}catch(e){toast(e.message||"Не удалось сформировать файл")}finally{btn.disabled=false}}
+async function exportTemplate(btn){btn.disabled=true;try{const d0=dnOf(2026,9,1);
+ const data=await xlsxBook(wb=>{const ws=wb.addWorksheet("Продажи");ws.columns=[{header:"Дата",width:12},{header:"Товар",width:40},{header:"Количество",width:12},{header:"Выручка",width:14},{header:"Цена",width:10},{header:"Промо",width:8}];
+  [[d0,"Квас 1,5 л",12,1800,150,0],[d0,"Лимонад 1 л",8,768,96,1],[d0+1,"Квас 1,5 л",9,1350,150,0]].forEach(r=>ws.addRow([dObj(r[0]),...r.slice(1)]));
+  ws.getColumn(1).numFmt="dd.mm.yyyy";ws.getRow(1).font=FONTB;ws.autoFilter={from:"A1",to:"F1"};styleSheet(ws)});
+ await saveFile("шаблон_продажи.xlsx",data)}catch(e){toast(e.message||"Не удалось сформировать файл")}finally{btn.disabled=false}}
+async function exportDemo(){const X=await lib("xlsx");const ws=X.utils.aoa_to_sheet(demoAoa());const wb=X.utils.book_new();X.utils.book_append_sheet(wb,ws,"TDSheet");
+ return new Uint8Array(X.write(wb,{type:"array",bookType:"xlsx"}))}
+async function exportForecast(btn){if(!R)return;btn.disabled=true;try{
+ const data=await xlsxBook(wb=>{const ws=wb.addWorksheet("Прогноз");
+  const hd=["Товар","Цена, руб","Эластичность","Спрос базовый, шт","Выручка негативный, руб","Выручка базовый, руб","Выручка позитивный, руб","Ошибка на проверке, %"];
+  const n=names.length,first=3,last=first+n-1;
+  const tr=ws.addRow(["Итого",null,null,{formula:`SUBTOTAL(9,D${first}:D${last})`},{formula:`SUBTOTAL(9,E${first}:E${last})`},{formula:`SUBTOTAL(9,F${first}:F${last})`},{formula:`SUBTOTAL(9,G${first}:G${last})`},null]);tr.font=FONTB;
+  ws.addRow(hd).font=FONTB;
+  names.forEach(nm=>{const s=R.sku[nm];ws.addRow([nm,Math.round(s.price/10)*10,s.elast==null?null:Math.round(s.elast*100)/100,Math.round(s.q["Базовый"]),Math.round(s.rev["Негативный"]),Math.round(s.rev["Базовый"]),Math.round(s.rev["Позитивный"]),s.err==null?null:Math.round(s.err*10)/10])});
+  [40,10,12,16,20,20,20,16].forEach((w,i)=>ws.getColumn(i+1).width=w);[2,4,5,6,7].forEach(i=>ws.getColumn(i).numFmt="#,##0");
+  ws.autoFilter={from:"A2",to:"H2"};ws.views=[{state:"frozen",ySplit:2}];styleSheet(ws);tr.font=FONTB;ws.getRow(2).font=FONTB});
+ await saveFile(`прогноз_${hLabel().replace(" ","_")}.xlsx`,data)}catch(e){toast(e.message||"Не удалось сформировать файл")}finally{btn.disabled=false}}
+
+/* ================= wiring ================= */
+$("fileIn").onchange=e=>{const f=e.target.files[0];if(f)readFile(f);e.target.value=""};
+const drop=$("drop");["dragenter","dragover"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)readFile(f)});
+$("demoBtn").onclick=()=>{setWorkbook("Продажи_по_номенклатуре_демо.xlsx",{TDSheet:demoAoa()},true);run(true);toast("Загружена демо-выгрузка")};
+$("demoDl").onclick=async()=>{const b=$("demoDl");b.disabled=true;try{await saveFile("Продажи_по_номенклатуре_демо.xlsx",await exportDemo())}catch(e){toast(e.message||"Не удалось сформировать файл")}finally{b.disabled=false}};
+function openSetup(v){$("setup").hidden=!v;$("setupBtn").setAttribute("aria-expanded",v);$("setupBtn").classList.toggle("pri",v)}
+$("setupBtn").onclick=()=>openSetup($("setup").hidden);
+$("tplBtn").onclick=e=>exportTemplate(e.currentTarget);
+$("sheetSel").onchange=e=>{S.sheet=e.target.value;pickSheet()};
+$("hdrIn").onchange=e=>{const v=Math.max(1,Math.min(+e.target.value||1,(S.sheets[S.sheet]||[]).length));S.hdr=v-1;applyHeader(true)};
+$("dfSel").onchange=e=>{S.opts.df=e.target.value;refresh()};
+$("optTot").onchange=e=>{S.opts.tot=e.target.checked;refresh()};
+$("optRet").onchange=e=>{S.opts.ret=e.target.checked;refresh()};
+let qT;$("skuQ").oninput=()=>{clearTimeout(qT);qT=setTimeout(renderSku,150)};
+$("resetEd").onclick=()=>{S.rename={};S.off=new Set();renderSku();markStale()};
+$("expData").onclick=e=>exportData(e.currentTarget);
+$("expFc").onclick=e=>exportForecast(e.currentTarget);
+$("runBtn").onclick=()=>{if(run(true)){openSetup(false);toast("Прогноз построен");$("kpis").scrollIntoView({behavior:"smooth",block:"start"})}};
+document.querySelectorAll("#mSeg button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#mSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");metric=b.dataset.v;drawMain(true)});
+const onH=()=>{hN=Math.max(1,Math.min(hU==="m"?24:104,Math.round(+$("hN").value||1)));$("hN").value=hN;if(W){H=calcH();R=runModel(W,H);Z=SEL=null;renderDash(true)}};
+$("hN").onchange=onH;
+$("hU").onchange=()=>{hU=$("hU").value;$("hN").max=hU==="m"?24:104;hN=hU==="m"?3:13;$("hN").value=hN;onH()};
+document.querySelectorAll("#gSeg button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#gSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");gran=b.dataset.v;Z=SEL=null;drawMain(true)});
+$("zoomBtn").onclick=()=>{Z=SEL;SEL=null;drawMain(true)};
+$("resetZ").onclick=()=>{Z=null;SEL=null;drawMain(false)};
+$("skuSel").onchange=drawSeason;
+let rt;addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{if(R){drawMain(false);drawBt()}},200)});
+
+/* start with the demo export so the page opens in a working state */
+setWorkbook("Продажи_по_номенклатуре_демо.xlsx",{TDSheet:demoAoa()},true);run(true);
+</script>
+
+</body>
+</html>
